@@ -1,10 +1,3 @@
-# Analysis-of-Twitter-Sentiments-Using-Spark-Streaming
-Social media platforms like Twitter generate vast amounts of data, making them invaluable sources for understanding public sentiment. This report details the implementation of a real-time sentiment analysis system using Apache Spark Streaming. The goal is to process Twitter data, classify sentiments, and evaluate the model's accuracy.
-
-Certainly! Below is a template for a README file that you can use for your real-time sentiment analysis project using Apache Spark Streaming for Twitter data:
-
----
-
 # Real-time Sentiment Analysis with Apache Spark Streaming
 
 ## Objective
@@ -45,7 +38,18 @@ To run this project, a Spark session was created using the PySpark library, faci
 # Sample code for Spark session setup
 !pip install pyspark
 from pyspark.sql import SparkSession
-# ... (remaining code)
+from pyspark.sql.types import *
+from pyspark.sql.functions import *
+from pyspark.ml.classification import LogisticRegression
+from pyspark.ml.feature import HashingTF, Tokenizer, StopWordsRemover
+
+# create Spark session
+appName = "Sentiment Analysis in Spark"
+spark = SparkSession \
+    	.builder \
+    	.appName(appName) \
+    	.config("spark.some.config.option", "some-value") \
+    	.getOrCreate()
 ```
 
 ### Data Collection
@@ -56,7 +60,11 @@ Twitter data was collected using the Twitter Streaming API and stored in a CSV f
 # Sample code for Twitter data collection
 from google.colab import drive
 drive.mount("/content/drive")
-# ... (remaining code)
+
+#read csv file into dataFrame with automatically inferred schema
+tweets_csv = spark.read.csv('/content/drive/MyDrive/Project/BigData_TeamProject/tweets.csv',              inferSchema=True, header=True)
+tweets_csv.show(truncate=False, n=3)
+
 ```
 
 ## Data Processing and Preparation
@@ -67,7 +75,10 @@ The relevant columns, "SentimentText" and "Sentiment," were selected, and the "S
 
 ```python
 # Sample code for selecting relevant data
-# ... (remaining code)
+#select only "SentimentText" and "Sentiment" column,and cast "Sentiment" column data into integer
+data = tweets_csv.select("SentimentText", col("Sentiment").cast("Int").alias("label"))
+data.show(truncate = False,n=5)
+
 ```
 
 ### Data Splitting
@@ -76,7 +87,11 @@ The dataset was divided into training (70%) and testing (30%) sets.
 
 ```python
 # Sample code for data splitting
-# ... (remaining code)
+#divide data, 70% for training, 30% for testing
+dividedData = data.randomSplit([0.7, 0.3])
+trainingData = dividedData[0] #index 0 = data training
+testingData = dividedData[1] #index 1 = data testing
+
 ```
 
 ## Sentiment Analysis
@@ -87,7 +102,21 @@ The "SentimentText" was tokenized into individual words, and stop words were rem
 
 ```python
 # Sample code for data tokenization and stop words removal
-# ... (remaining code)
+#Prepare training and testing data
+train_rows = trainingData.count()
+test_rows = testingData.count()
+print ("Training data rows:", train_rows, "; Testing data rows:", test_rows)
+
+#Separate "SentimentText" into individual words using tokenizer
+tokenizer = Tokenizer(inputCol="SentimentText", outputCol="SentimentWords")
+tokenizedTrain = tokenizer.transform(trainingData)
+tokenizedTrain.show(truncate=False, n=5)
+
+#Removing stop words (unimportant words to be features)
+swr = StopWordsRemover(inputCol=tokenizer.getOutputCol(),outputCol="MeaningfulWords")
+SwRemovedTrain = swr.transform(tokenizedTrain)
+SwRemovedTrain.show(truncate=False, n=5)
+
 ```
 
 ### Converting Words to Numerical Features
@@ -96,7 +125,10 @@ Words were converted into numerical features using the HashingTF function.
 
 ```python
 # Sample code for converting words to numerical features
-# ... (remaining code)
+hashTF = HashingTF(inputCol=swr.getOutputCol(), outputCol="features")
+numericTrainData = hashTF.transform(SwRemovedTrain).select('label', 'MeaningfulWords', 'features')
+numericTrainData.show(truncate=False, n=3)
+
 ```
 
 ## Model Training
@@ -105,7 +137,10 @@ A logistic regression model was trained using the prepared training data.
 
 ```python
 # Sample code for model training
-# ... (remaining code)
+lr = LogisticRegression(labelCol="label", featuresCol="features",maxIter=10, regParam=0.01)
+model = lr.fit(numericTrainData)
+print ("Training is done!")
+
 ```
 
 ## Testing and Evaluation
@@ -116,7 +151,12 @@ The same preprocessing steps were applied to the testing data.
 
 ```python
 # Sample code for data preparation for testing
-# ... (remaining code)
+# Preparing testing data
+tokenizedTest = tokenizer.transform(testingData)
+SwRemovedTest = swr.transform(tokenizedTest)
+numericTest = hashTF.transform(SwRemovedTest).select('Label', 'MeaningfulWords', 'features')
+numericTest.show(truncate=False, n=2)
+
 ```
 
 ### Prediction and Accuracy Calculation
@@ -125,7 +165,12 @@ The model was used to predict sentiments on the testing data, and accuracy was c
 
 ```python
 # Sample code for prediction and accuracy calculation
-# ... (remaining code)
+prediction = model.transform(numericTest)
+predictionFinal = prediction.select("MeaningfulWords", "prediction", "Label")
+predictionFinal.show(n=4, truncate = False)
+correctPrediction = predictionFinal.filter(predictionFinal['prediction'] == predictionFinal['Label']).count()
+totalData = predictionFinal.count()
+print("correct prediction:", correctPrediction, ", total data:", totalData,", accuracy:", correctPrediction/totalData)
 ```
 
 ## Applications of Sentiment Analysis
@@ -146,4 +191,3 @@ Proposing potential enhancements and future directions for the sentiment analysi
 
 ---
 
-Feel free to customize the README file further based on specific details, instructions, or additional information related to your project.
